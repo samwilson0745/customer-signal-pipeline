@@ -1,0 +1,18 @@
+{
+  "mappings": {
+    "properties": {
+      "event_id": { "type": "keyword" },
+      "channel": { "type": "keyword" },
+      "author": { "type": "keyword" },
+      "text": { "type": "text" },
+      "lang": { "type": "keyword" },
+      "brand": { "type": "keyword" },
+      "sentiment": { "type": "keyword" },
+      "urgency": { "type": "keyword" },
+      "topic": { "type": "keyword" },
+      "created_at": { "type": "date" },
+      "classified_at": { "type": "date" },
+      "classifier_source": { "type": "keyword" }
+    }
+  }
+}

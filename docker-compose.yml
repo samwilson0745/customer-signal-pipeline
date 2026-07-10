@@ -1,0 +1,151 @@
+name: customer-signal-pipeline
+
+networks:
+  csp-net:
+    driver: bridge
+
+volumes:
+  cassandra-data:
+  es-data:
+
+services:
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: csp-kafka
+    networks: [csp-net]
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:29092 --list"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 20s
+
+  cassandra:
+    image: cassandra:4.1
+    container_name: csp-cassandra
+    networks: [csp-net]
+    ports:
+      - "9042:9042"
+    environment:
+      CASSANDRA_CLUSTER_NAME: customer-signal-pipeline
+    volumes:
+      - cassandra-data:/var/lib/cassandra
+      - ./scripts/init_cassandra.cql:/scripts/init_cassandra.cql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe keyspaces' localhost 9042"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 40s
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: csp-elasticsearch
+    networks: [csp-net]
+    ports:
+      - "9200:9200"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.security.http.ssl.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+      - ./scripts/init_es_mapping.json:/scripts/init_es_mapping.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: csp-redis
+    networks: [csp-net]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  triage-service:
+    build: ./triage-service
+    container_name: csp-triage-service
+    networks: [csp-net]
+    ports:
+      - "${TRIAGE_HEALTH_PORT:-8000}:8000"
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-customer-signals}
+      KAFKA_DLQ_TOPIC: ${KAFKA_DLQ_TOPIC:-customer-signals-dlq}
+      KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP:-triage-service}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      CASSANDRA_HOSTS: cassandra
+      CASSANDRA_PORT: 9042
+      CASSANDRA_KEYSPACE: ${CASSANDRA_KEYSPACE:-customer_signals}
+      ES_URL: http://elasticsearch:9200
+      ES_INDEX: ${ES_INDEX:-customer-signals}
+      REDIS_URL: redis://redis:6379/0
+      STATS_TTL_SECONDS: ${STATS_TTL_SECONDS:-86400}
+      TRIAGE_HEALTH_PORT: 8000
+    depends_on:
+      kafka: { condition: service_healthy }
+      cassandra: { condition: service_healthy }
+      elasticsearch: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  producer:
+    build: ./producer
+    container_name: csp-producer
+    networks: [csp-net]
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-customer-signals}
+      EVENTS_PER_SECOND: ${EVENTS_PER_SECOND:-2}
+      BRANDS: ${BRANDS:-acme,globex,initech}
+    depends_on:
+      kafka: { condition: service_healthy }
+      triage-service: { condition: service_started }
+
+  query-api:
+    build: ./query-api
+    container_name: csp-query-api
+    networks: [csp-net]
+    ports:
+      - "${QUERY_API_PORT:-8080}:8080"
+    environment:
+      QUERY_API_PORT: 8080
+      REDIS_URL: redis://redis:6379/0
+      ES_URL: http://elasticsearch:9200
+      ES_INDEX: ${ES_INDEX:-customer-signals}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_ISSUER: ${JWT_ISSUER:-customer-signal-pipeline}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      CB_FAILURE_THRESHOLD: ${CB_FAILURE_THRESHOLD:-5}
+      CB_COOLDOWN_SECONDS: ${CB_COOLDOWN_SECONDS:-30}
+    depends_on:
+      elasticsearch: { condition: service_healthy }
+      redis: { condition: service_healthy }

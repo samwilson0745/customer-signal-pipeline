@@ -1,0 +1,12 @@
+.env
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+query-api/query-api
+query-api/gen-token
+*.log
+.DS_Store

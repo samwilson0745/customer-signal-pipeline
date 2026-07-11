@@ -174,3 +174,7 @@ The dead-letter Kafka topic (`customer-signals-dlq`) *is* implemented — see
 [`triage-service/app/kafka_consumer.py`](triage-service/app/kafka_consumer.py).
 The read-only live dashboard *is* implemented — see
 [`dashboard/`](dashboard) and "Live dashboard" above.
+
+## Screenshots
+<img width="1470" height="768" alt="Screenshot 2026-07-11 at 6 14 59 PM" src="https://github.com/user-attachments/assets/cf6e8f21-3130-4f78-9ef3-49cc5f90c7a1" />
+

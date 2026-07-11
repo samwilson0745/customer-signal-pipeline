@@ -149,3 +149,14 @@ services:
     depends_on:
       elasticsearch: { condition: service_healthy }
       redis: { condition: service_healthy }
+
+  dashboard:
+    image: nginx:alpine
+    container_name: csp-dashboard
+    networks: [csp-net]
+    ports:
+      - "${DASHBOARD_PORT:-8090}:80"
+    volumes:
+      - ./dashboard:/usr/share/nginx/html:ro
+    depends_on:
+      query-api: { condition: service_started }

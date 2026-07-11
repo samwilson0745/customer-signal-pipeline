@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Customer Signal Pipeline — Live Dashboard</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #0b0f14;
+    --panel: #131a22;
+    --panel-border: #232d38;
+    --text: #e7edf3;
+    --muted: #8a97a6;
+    --accent: #4c8dff;
+    --positive: #35c774;
+    --neutral: #8a97a6;
+    --negative: #e5534b;
+    --low: #35c774;
+    --medium: #d9a441;
+    --high: #e5534b;
+    --critical: #b32bce;
+    --ok: #35c774;
+    --bad: #e5534b;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f6f9;
+      --panel: #ffffff;
+      --panel-border: #dfe5ec;
+      --text: #16202b;
+      --muted: #5b6773;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 24px 20px 60px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  h1 { font-size: 1.4rem; margin: 0; }
+  .subtitle { color: var(--muted); font-size: 0.85rem; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+  }
+  .panel h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+
+  .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; align-items: end; }
+  label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
+  input, select {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--panel-border);
+    background: transparent;
+    color: var(--text);
+    font-size: 0.9rem;
+  }
+  button {
+    padding: 9px 16px;
+    border-radius: 6px;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  button:hover { filter: brightness(1.08); }
+  .hint { font-size: 0.78rem; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+  .hint code { background: var(--panel-border); padding: 1px 5px; border-radius: 4px; }
+
+  .status-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+  .dot.ok { background: var(--ok); }
+  .dot.bad { background: var(--bad); }
+  .badge { font-size: 0.82rem; color: var(--muted); }
+
+  .banner {
+    display: none;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    margin-bottom: 16px;
+    background: rgba(229, 83, 75, 0.12);
+    border: 1px solid var(--negative);
+    color: var(--negative);
+  }
+  .banner.show { display: block; }
+
+  .total { font-size: 2.4rem; font-weight: 700; line-height: 1; }
+  .total-label { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+
+  .bars { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+  .bar-row { display: grid; grid-template-columns: 90px 1fr 60px; align-items: center; gap: 10px; }
+  .bar-name { font-size: 0.82rem; color: var(--muted); text-transform: capitalize; }
+  .bar-track { background: var(--panel-border); border-radius: 5px; height: 12px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 5px; width: 0%; transition: width 0.4s ease; }
+  .bar-count { font-size: 0.82rem; text-align: right; color: var(--text); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .footer-row { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.78rem; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Customer Signal Pipeline</h1>
+    <div class="subtitle">read-only live dashboard</div>
+  </header>
+
+  <div id="banner" class="banner"></div>
+
+  <div class="panel">
+    <h2>Connection</h2>
+    <div class="config-grid">
+      <div>
+        <label for="apiBase">Query API base URL</label>
+        <input id="apiBase" type="text" placeholder="http://localhost:8080" value="http://localhost:8080">
+      </div>
+      <div>
+        <label for="token">JWT (Bearer token)</label>
+        <input id="token" type="password" placeholder="paste token from gen-token">
+      </div>
+      <div>
+        <label for="brand">Brand</label>
+        <input id="brand" type="text" list="brandList" value="acme">
+        <datalist id="brandList">
+          <option value="acme"></option>
+          <option value="globex"></option>
+          <option value="initech"></option>
+        </datalist>
+      </div>
+      <div>
+        <label for="interval">Refresh every</label>
+        <select id="interval">
+          <option value="2000">2s</option>
+          <option value="5000" selected>5s</option>
+          <option value="10000">10s</option>
+        </select>
+      </div>
+      <div>
+        <button id="saveBtn">Connect</button>
+      </div>
+    </div>
+    <div class="hint">
+      No login here — the Query API has no user store, it only verifies a signed JWT.
+      Mint one for testing with:
+      <br><code>docker compose exec -T query-api ./gen-token -sub demo-client -secret &lt;JWT_SECRET&gt; -issuer customer-signal-pipeline</code>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Service health</h2>
+    <div class="status-row">
+      <span class="badge"><span id="dotOverall" class="dot bad"></span><span id="overallText">unknown</span></span>
+      <span class="badge"><span id="dotEs" class="dot bad"></span>Elasticsearch breaker: <span id="esBreaker">—</span></span>
+      <span class="badge"><span id="dotRedis" class="dot bad"></span>Redis breaker: <span id="redisBreaker">—</span></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Volume</h2>
+    <div class="total" id="total">—</div>
+    <div class="total-label">events for brand "<span id="brandLabel">—</span>"</div>
+  </div>
+
+  <div class="grid-2">
+    <div class="panel">
+      <h2>Sentiment</h2>
+      <div class="bars" id="sentimentBars"></div>
+    </div>
+    <div class="panel">
+      <h2>Urgency</h2>
+      <div class="bars" id="urgencyBars"></div>
+    </div>
+  </div>
+
+  <div class="footer-row">
+    <span id="lastUpdated">never updated</span>
+    <span id="nextRefresh"></span>
+  </div>
+</div>
+
+<script>
+(function () {
+  var STORAGE_KEY = "csp_dashboard_v1";
+  var SENTIMENT_ORDER = ["positive", "neutral", "negative"];
+  var URGENCY_ORDER = ["low", "medium", "high", "critical"];
+
+  var els = {
+    apiBase: document.getElementById("apiBase"),
+    token: document.getElementById("token"),
+    brand: document.getElementById("brand"),
+    interval: document.getElementById("interval"),
+    saveBtn: document.getElementById("saveBtn"),
+    banner: document.getElementById("banner"),
+    dotOverall: document.getElementById("dotOverall"),
+    overallText: document.getElementById("overallText"),
+    dotEs: document.getElementById("dotEs"),
+    esBreaker: document.getElementById("esBreaker"),
+    dotRedis: document.getElementById("dotRedis"),
+    redisBreaker: document.getElementById("redisBreaker"),
+    total: document.getElementById("total"),
+    brandLabel: document.getElementById("brandLabel"),
+    sentimentBars: document.getElementById("sentimentBars"),
+    urgencyBars: document.getElementById("urgencyBars"),
+    lastUpdated: document.getElementById("lastUpdated"),
+    nextRefresh: document.getElementById("nextRefresh"),
+  };
+
+  var statsTimer = null;
+  var healthTimer = null;
+  var countdownTimer = null;
+  var secondsToNext = 0;
+
+  function loadConfig() {
+    try {
+      var saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+      if (saved.apiBase) els.apiBase.value = saved.apiBase;
+      if (saved.token) els.token.value = saved.token;
+      if (saved.brand) els.brand.value = saved.brand;
+      if (saved.interval) els.interval.value = saved.interval;
+    } catch (e) { /* ignore malformed storage */ }
+  }
+
+  function saveConfig() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      apiBase: els.apiBase.value.trim(),
+      token: els.token.value.trim(),
+      brand: els.brand.value.trim(),
+      interval: els.interval.value,
+    }));
+  }
+
+  function showError(msg) {
+    els.banner.textContent = msg;
+    els.banner.classList.add("show");
+  }
+
+  function clearError() {
+    els.banner.classList.remove("show");
+    els.banner.textContent = "";
+  }
+
+  function apiBase() {
+    return (els.apiBase.value || "").trim().replace(/\/+$/, "");
+  }
+
+  function renderBars(container, order, counts, colorVar) {
+    var total = order.reduce(function (sum, key) { return sum + (counts[key] || 0); }, 0);
+    container.innerHTML = "";
+    order.forEach(function (key) {
+      var count = counts[key] || 0;
+      var pct = total > 0 ? Math.round((count / total) * 100) : 0;
+      var row = document.createElement("div");
+      row.className = "bar-row";
+
+      var name = document.createElement("div");
+      name.className = "bar-name";
+      name.textContent = key;
+
+      var track = document.createElement("div");
+      track.className = "bar-track";
+      var fill = document.createElement("div");
+      fill.className = "bar-fill";
+      fill.style.width = pct + "%";
+      fill.style.background = "var(--" + key + ")";
+      track.appendChild(fill);
+
+      var countEl = document.createElement("div");
+      countEl.className = "bar-count";
+      countEl.textContent = count + " (" + pct + "%)";
+
+      row.appendChild(name);
+      row.appendChild(track);
+      row.appendChild(countEl);
+      container.appendChild(row);
+    });
+  }
+
+  function fetchStats() {
+    var token = els.token.value.trim();
+    var brand = els.brand.value.trim();
+    if (!token || !brand) return;
+
+    fetch(apiBase() + "/stats?brand=" + encodeURIComponent(brand), {
+      headers: { "Authorization": "Bearer " + token },
+    }).then(function (res) {
+      if (res.status === 401) throw new Error("Unauthorized — token missing/expired/invalid.");
+      if (res.status === 429) throw new Error("Rate limited by the Query API — backing off.");
+      if (res.status === 503) throw new Error("Stats temporarily unavailable (circuit breaker open or degraded backend).");
+      if (!res.ok) throw new Error("Query API returned HTTP " + res.status);
+      return res.json();
+    }).then(function (data) {
+      clearError();
+      els.brandLabel.textContent = brand;
+      els.total.textContent = (data.total != null ? data.total : 0);
+      renderBars(els.sentimentBars, SENTIMENT_ORDER, data.sentiment || {});
+      renderBars(els.urgencyBars, URGENCY_ORDER, data.urgency || {});
+      els.lastUpdated.textContent = "last updated " + new Date().toLocaleTimeString();
+    }).catch(function (err) {
+      showError(err.message || "Failed to reach the Query API.");
+    });
+  }
+
+  function fetchHealth() {
+    fetch(apiBase() + "/health").then(function (res) {
+      return res.json().then(function (body) { return { ok: res.ok, body: body }; });
+    }).then(function (r) {
+      var body = r.body || {};
+      els.esBreaker.textContent = body.es_breaker || "—";
+      els.redisBreaker.textContent = body.redis_breaker || "—";
+      els.dotEs.className = "dot " + (body.elasticsearch ? "ok" : "bad");
+      els.dotRedis.className = "dot " + (body.redis ? "ok" : "bad");
+      var healthy = body.status === "ok";
+      els.dotOverall.className = "dot " + (healthy ? "ok" : "bad");
+      els.overallText.textContent = healthy ? "healthy" : "degraded";
+    }).catch(function () {
+      els.dotOverall.className = "dot bad";
+      els.overallText.textContent = "unreachable";
+    });
+  }
+
+  function tickCountdown(intervalMs) {
+    secondsToNext = Math.round(intervalMs / 1000);
+    clearInterval(countdownTimer);
+    countdownTimer = setInterval(function () {
+      secondsToNext = Math.max(0, secondsToNext - 1);
+      els.nextRefresh.textContent = "next refresh in " + secondsToNext + "s";
+    }, 1000);
+  }
+
+  function start() {
+    saveConfig();
+    clearInterval(statsTimer);
+    clearInterval(healthTimer);
+    clearInterval(countdownTimer);
+
+    var intervalMs = parseInt(els.interval.value, 10) || 5000;
+    fetchStats();
+    fetchHealth();
+    tickCountdown(intervalMs);
+    healthTimer = setInterval(fetchHealth, Math.max(intervalMs, 5000));
+    // Restart the visible countdown alongside each stats poll.
+    statsTimer = setInterval(function () { fetchStats(); tickCountdown(intervalMs); }, intervalMs);
+  }
+
+  els.saveBtn.addEventListener("click", start);
+  loadConfig();
+  start();
+})();
+</script>
+</body>
+</html>

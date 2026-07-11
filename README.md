@@ -36,6 +36,7 @@ enterprise scale.
 | [`producer/`](producer) | Node.js + TypeScript (`kafkajs`) | Generates a synthetic stream of customer messages across 4 channels and publishes them to Kafka. |
 | [`triage-service/`](triage-service) | Python (FastAPI) | Consumes from Kafka, classifies each message (LLM or heuristic fallback), writes raw events to Cassandra, enriched docs to Elasticsearch, and live counters to Redis. Never drops a message silently — failures go to a Kafka dead-letter topic. |
 | [`query-api/`](query-api) | Go | The only externally exposed service. Self-contained JWT auth, Redis-backed token-bucket rate limiting, and a circuit breaker in front of Elasticsearch/Redis. Serves `/search`, `/stats`, `/health`. |
+| [`dashboard/`](dashboard) | Static HTML/JS | Read-only live view of `/stats` and `/health`, polled directly from the browser. No build step, no server-side code. |
 
 ## Event schema
 
@@ -78,6 +79,18 @@ with `JWT_SECRET`. Use the bundled CLI to mint one for testing:
 TOKEN=$(docker compose exec -T query-api ./gen-token -sub demo-client -secret change-me-in-production -issuer customer-signal-pipeline)
 echo "$TOKEN"
 ```
+
+### Live dashboard
+
+A static, read-only dashboard polls `/stats` and `/health` directly from the
+browser — no server-side code of its own. It comes up automatically with
+`docker compose up` on `http://localhost:${DASHBOARD_PORT:-8090}`.
+
+Open it, paste the `$TOKEN` from above into the "JWT" field, pick a brand
+(`acme`, `globex`, `initech`), and it'll show live totals plus
+sentiment/urgency breakdowns, refreshing on the interval you choose. The
+Query API allows cross-origin requests specifically so this page (served
+from a different port) can call it with `fetch()`.
 
 ### Example calls
 
@@ -144,6 +157,7 @@ Key variables:
 | `JWT_SECRET`, `JWT_ISSUER` | Query API auth |
 | `RATE_LIMIT_PER_MINUTE` | Query API token-bucket size/refill rate |
 | `CB_FAILURE_THRESHOLD`, `CB_COOLDOWN_SECONDS` | Query API circuit breaker tuning |
+| `DASHBOARD_PORT` | Port the static dashboard is served on (default 8090) |
 
 ## Init scripts
 
@@ -153,9 +167,10 @@ Key variables:
 
 ## Stretch goals not implemented
 
-- Read-only live dashboard (static HTML polling `/stats`).
 - Swapping the synthetic producer for a real Reddit/Twitter sample stream.
 - Prometheus metrics / OpenTelemetry tracing from the Query API.
 
 The dead-letter Kafka topic (`customer-signals-dlq`) *is* implemented — see
 [`triage-service/app/kafka_consumer.py`](triage-service/app/kafka_consumer.py).
+The read-only live dashboard *is* implemented — see
+[`dashboard/`](dashboard) and "Live dashboard" above.

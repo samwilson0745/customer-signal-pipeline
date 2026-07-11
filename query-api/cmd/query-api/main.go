@@ -10,6 +10,7 @@ import (
 	"customer-signal-pipeline/query-api/internal/circuitbreaker"
 	"customer-signal-pipeline/query-api/internal/config"
 	"customer-signal-pipeline/query-api/internal/handlers"
+	"customer-signal-pipeline/query-api/internal/middleware"
 	"customer-signal-pipeline/query-api/internal/ratelimit"
 	"customer-signal-pipeline/query-api/internal/search"
 	"customer-signal-pipeline/query-api/internal/stats"
@@ -38,9 +39,9 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/search", auth.Middleware(cfg.JWTSecret, cfg.JWTIssuer)(h.RateLimitMiddleware(http.HandlerFunc(h.SearchHandler))))
-	mux.Handle("/stats", auth.Middleware(cfg.JWTSecret, cfg.JWTIssuer)(h.RateLimitMiddleware(http.HandlerFunc(h.StatsHandler))))
-	mux.HandleFunc("/health", h.HealthHandler)
+	mux.Handle("/search", middleware.CORS(auth.Middleware(cfg.JWTSecret, cfg.JWTIssuer)(h.RateLimitMiddleware(http.HandlerFunc(h.SearchHandler)))))
+	mux.Handle("/stats", middleware.CORS(auth.Middleware(cfg.JWTSecret, cfg.JWTIssuer)(h.RateLimitMiddleware(http.HandlerFunc(h.StatsHandler)))))
+	mux.Handle("/health", middleware.CORS(http.HandlerFunc(h.HealthHandler)))
 
 	addr := ":" + cfg.Port
 	log.Printf(`{"level":"info","service":"query-api","msg":"listening","addr":"%s","es_url":"%s","rate_limit_per_minute":%d}`,

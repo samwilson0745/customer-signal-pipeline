@@ -18,6 +18,17 @@ def get_client() -> redis.Redis:
     return _client
 
 
+def ping() -> bool:
+    """Lightweight liveness check for /health. Does not attempt to
+    (re)connect; just reports whether the existing client (if any) responds."""
+    if _client is None:
+        return False
+    try:
+        return bool(_client.ping())
+    except Exception:  # noqa: BLE001
+        return False
+
+
 @retry(reraise=True, stop=stop_after_attempt(5), wait=wait_exponential(multiplier=0.5, min=0.5, max=8))
 def increment_stats(event: EnrichedEvent) -> None:
     """Bump the live sentiment/urgency counters for a brand.

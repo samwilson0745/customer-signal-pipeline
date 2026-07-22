@@ -44,6 +44,18 @@ def get_client() -> Elasticsearch:
     return _client
 
 
+def ping() -> bool:
+    """Lightweight liveness check for /health. Does not attempt to
+    (re)connect -- get_client()'s own retry loop handles that; this just
+    reports whether the existing client (if any) still responds."""
+    if _client is None:
+        return False
+    try:
+        return bool(_client.ping())
+    except Exception:  # noqa: BLE001
+        return False
+
+
 @retry(reraise=True, stop=stop_after_attempt(5), wait=wait_exponential(multiplier=0.5, min=0.5, max=8))
 def index_enriched_event(event: EnrichedEvent) -> None:
     client = get_client()

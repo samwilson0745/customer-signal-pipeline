@@ -50,6 +50,19 @@ def get_session() -> Session:
     return _session
 
 
+def ping() -> bool:
+    """Lightweight liveness check for /health. Does not attempt to
+    (re)connect -- insert_raw_event's own retry loop handles that; this just
+    reports whether the existing session (if any) still responds."""
+    if _session is None:
+        return False
+    try:
+        _session.execute("SELECT release_version FROM system.local")
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 @retry(reraise=True, stop=stop_after_attempt(5), wait=wait_exponential(multiplier=0.5, min=0.5, max=8))
 def insert_raw_event(event: RawEvent) -> None:
     session = get_session()

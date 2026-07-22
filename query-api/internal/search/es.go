@@ -11,11 +11,18 @@ import (
 	elasticsearch "github.com/elastic/go-elasticsearch/v8"
 )
 
+const (
+	DefaultLimit = 50
+	MaxLimit     = 200
+)
+
 type Query struct {
 	Text      string
 	Brand     string
 	Sentiment string
 	Urgency   string
+	Limit     int
+	Offset    int
 }
 
 type Hit struct {
@@ -78,8 +85,17 @@ func buildQuery(q Query) map[string]interface{} {
 	addTermFilter("sentiment", q.Sentiment)
 	addTermFilter("urgency", q.Urgency)
 
+	limit := q.Limit
+	if limit <= 0 {
+		limit = DefaultLimit
+	}
+	if limit > MaxLimit {
+		limit = MaxLimit
+	}
+
 	return map[string]interface{}{
-		"size": 50,
+		"size": limit,
+		"from": q.Offset,
 		"sort": []map[string]interface{}{{"created_at": map[string]interface{}{"order": "desc"}}},
 		"query": map[string]interface{}{
 			"bool": map[string]interface{}{

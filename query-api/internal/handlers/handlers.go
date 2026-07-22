@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"customer-signal-pipeline/query-api/internal/auth"
@@ -13,6 +14,19 @@ import (
 	"customer-signal-pipeline/query-api/internal/search"
 	"customer-signal-pipeline/query-api/internal/stats"
 )
+
+// parsePositiveInt parses a query-param integer, returning fallback if the
+// param is absent, malformed, or negative.
+func parsePositiveInt(raw string, fallback int) int {
+	if raw == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		return fallback
+	}
+	return n
+}
 
 type Handler struct {
 	Search       *search.Client
@@ -58,6 +72,8 @@ func (h *Handler) SearchHandler(w http.ResponseWriter, r *http.Request) {
 		Brand:     r.URL.Query().Get("brand"),
 		Sentiment: r.URL.Query().Get("sentiment"),
 		Urgency:   r.URL.Query().Get("urgency"),
+		Limit:     parsePositiveInt(r.URL.Query().Get("limit"), search.DefaultLimit),
+		Offset:    parsePositiveInt(r.URL.Query().Get("offset"), 0),
 	}
 
 	var hits []search.Hit

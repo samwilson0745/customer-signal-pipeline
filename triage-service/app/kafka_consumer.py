@@ -119,3 +119,17 @@ def start_background_consumer() -> threading.Thread:
 
 def stop_background_consumer() -> None:
     _stop_event.set()
+    _close_dlq_producer()
+
+
+def _close_dlq_producer() -> None:
+    global _dlq_producer
+    if _dlq_producer is None:
+        return
+    try:
+        _dlq_producer.flush(timeout=5)
+        _dlq_producer.close(timeout=5)
+    except KafkaError:
+        logger.exception("error closing DLQ producer")
+    finally:
+        _dlq_producer = None

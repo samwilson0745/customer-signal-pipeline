@@ -1,8 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 
@@ -44,9 +49,32 @@ func main() {
 	mux.Handle("/health", middleware.CORS(http.HandlerFunc(h.HealthHandler)))
 
 	addr := ":" + cfg.Port
-	log.Printf(`{"level":"info","service":"query-api","msg":"listening","addr":"%s","es_url":"%s","rate_limit_per_minute":%d}`,
-		addr, cfg.ESURL, cfg.RateLimitPerMinute)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatalf("server error: %v", err)
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      mux,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
+
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		log.Printf(`{"level":"info","service":"query-api","msg":"listening","addr":"%s","es_url":"%s","rate_limit_per_minute":%d}`,
+			addr, cfg.ESURL, cfg.RateLimitPerMinute)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	sig := <-shutdown
+	log.Printf(`{"level":"info","service":"query-api","msg":"shutting down","signal":"%s"}`, sig)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("server shutdown error: %v", err)
+	}
+	log.Printf(`{"level":"info","service":"query-api","msg":"stopped"}`)
 }
